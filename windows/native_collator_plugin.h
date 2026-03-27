@@ -1,5 +1,5 @@
-#ifndef FLUTTER_PLUGIN_NATIVE_COLLATOR_PLUGIN_H_
-#define FLUTTER_PLUGIN_NATIVE_COLLATOR_PLUGIN_H_
+#ifndef NATIVE_COLLATOR_PLUGIN_IMPL_H_
+#define NATIVE_COLLATOR_PLUGIN_IMPL_H_
 
 #include <flutter/method_channel.h>
 #include <flutter/plugin_registrar_windows.h>
@@ -28,4 +28,4 @@ class NativeCollatorPlugin : public flutter::Plugin {
 
 }  // namespace native_collator
 
-#endif  // FLUTTER_PLUGIN_NATIVE_COLLATOR_PLUGIN_H_
+#endif  // NATIVE_COLLATOR_PLUGIN_IMPL_H_

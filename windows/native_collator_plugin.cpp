@@ -18,6 +18,9 @@ namespace native_collator {
 static std::wstring Utf8ToWide(const std::string& utf8) {
   if (utf8.empty()) return {};
   int size = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
+  // TODO GetLastError to find out exact error case, see
+  // https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar#return-value
+  if (size <= 0) return {};
   std::wstring wide(size - 1, L'\0');
   MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, wide.data(), size);
   return wide;
@@ -94,6 +97,8 @@ void NativeCollatorPlugin::HandleMethodCall(
               wide_strings[a].c_str(), -1,
               wide_strings[b].c_str(), -1,
               nullptr, nullptr, 0);
+          // Fallback to string sort in case of CompareStringEx error.
+          if (cmp == 0) return wide_strings[a] < wide_strings[b];
           return cmp == CSTR_LESS_THAN;
         });
 
