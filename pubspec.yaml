@@ -1,6 +1,6 @@
 name: native_collator
 description: Locale-aware string sorting via platform ICU using Flutter's platform channels.
-version: 1.0.2
+version: 1.1.0
 
 homepage: https://github.com/MichalDanielDobrzanski/native_collator
 repository: https://github.com/MichalDanielDobrzanski/native_collator
