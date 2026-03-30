@@ -22,6 +22,12 @@ class NativeCollatorPlugin: FlutterPlugin, MethodChannel.MethodCallHandler {
       val collator = Collator.getInstance(Locale.forLanguageTag(localeStr))
       val sorted = input.sortedWith(collator)
       result.success(sorted)
+    } else if (call.method == "sortIndices") {
+      val input = call.argument<List<String>>("input") ?: emptyList()
+      val localeStr = call.argument<String>("locale") ?: "en"
+      val collator = Collator.getInstance(Locale.forLanguageTag(localeStr))
+      val indices = input.indices.sortedWith { a, b -> collator.compare(input[a], input[b]) }
+      result.success(indices)
     } else {
       result.notImplemented()
     }

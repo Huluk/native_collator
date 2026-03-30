@@ -22,4 +22,16 @@ class NativeCollator {
     });
     return sorted!.cast<String>();
   }
+
+  static Future<List<T>> sortBy<T>(
+    List<T> items,
+    String Function(T) keyOf, {
+    required String locale,
+  }) async {
+    final indices = await _channel.invokeMethod<List<dynamic>>('sortIndices', {
+      'input': items.map(keyOf).toList(),
+      'locale': locale,
+    });
+    return indices!.map((i) => items[i as int]).toList();
+  }
 }

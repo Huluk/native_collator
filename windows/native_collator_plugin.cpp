@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,62 @@ static std::wstring Utf8ToWide(const std::string& utf8) {
   std::wstring wide(size - 1, L'\0');
   MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, wide.data(), size);
   return wide;
+}
+
+// Parses and validates args, sorts, and returns the sorted index permutation.
+// Calls result.Error and returns nullopt if args are invalid.
+static std::optional<std::vector<size_t>> ComputeSortedIndices(
+    const flutter::EncodableMap* args,
+    flutter::MethodResult<flutter::EncodableValue>& result) {
+  if (!args) {
+    result.Error("BAD_ARGS", "Expected a map of arguments");
+    return std::nullopt;
+  }
+
+  auto input_it = args->find(flutter::EncodableValue("input"));
+  auto locale_it = args->find(flutter::EncodableValue("locale"));
+  if (input_it == args->end() || locale_it == args->end()) {
+    result.Error("BAD_ARGS", "Missing 'input' or 'locale'");
+    return std::nullopt;
+  }
+
+  const auto* input_list =
+      std::get_if<flutter::EncodableList>(&input_it->second);
+  const auto* locale_utf8 =
+      std::get_if<std::string>(&locale_it->second);
+  if (!input_list || !locale_utf8) {
+    result.Error("BAD_ARGS", "Invalid argument types");
+    return std::nullopt;
+  }
+
+  // CompareStringEx expects a BCP 47 locale name (hyphens, not underscores).
+  std::wstring locale = Utf8ToWide(*locale_utf8);
+  for (auto& c : locale) {
+    if (c == L'_') c = L'-';
+  }
+
+  std::vector<std::wstring> wide_strings;
+  wide_strings.reserve(input_list->size());
+  for (const auto& item : *input_list) {
+    const auto* s = std::get_if<std::string>(&item);
+    wide_strings.push_back(s ? Utf8ToWide(*s) : std::wstring{});
+  }
+
+  std::vector<size_t> indices(wide_strings.size());
+  std::iota(indices.begin(), indices.end(), 0);
+  std::stable_sort(indices.begin(), indices.end(),
+      [&](size_t a, size_t b) {
+        int cmp = CompareStringEx(
+            locale.c_str(), NORM_LINGUISTIC_CASING,
+            wide_strings[a].c_str(), -1,
+            wide_strings[b].c_str(), -1,
+            nullptr, nullptr, 0);
+        // Fallback to string sort in case of CompareStringEx error.
+        if (cmp == 0) return wide_strings[a] < wide_strings[b];
+        return cmp == CSTR_LESS_THAN;
+      });
+
+  return indices;
 }
 
 // static
@@ -51,65 +108,35 @@ NativeCollatorPlugin::~NativeCollatorPlugin() {}
 void NativeCollatorPlugin::HandleMethodCall(
     const flutter::MethodCall<flutter::EncodableValue> &method_call,
     std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+  const auto* args =
+      std::get_if<flutter::EncodableMap>(method_call.arguments());
+
   if (method_call.method_name() == "sortStrings") {
-    const auto* args =
-        std::get_if<flutter::EncodableMap>(method_call.arguments());
-    if (!args) {
-      result->Error("BAD_ARGS", "Expected a map of arguments");
-      return;
-    }
+    auto indices = ComputeSortedIndices(args, *result);
+    if (!indices) return;
 
-    auto input_it = args->find(flutter::EncodableValue("input"));
-    auto locale_it = args->find(flutter::EncodableValue("locale"));
-    if (input_it == args->end() || locale_it == args->end()) {
-      result->Error("BAD_ARGS", "Missing 'input' or 'locale'");
-      return;
-    }
-
-    const auto* input_list =
-        std::get_if<flutter::EncodableList>(&input_it->second);
-    const auto* locale_utf8 =
-        std::get_if<std::string>(&locale_it->second);
-    if (!input_list || !locale_utf8) {
-      result->Error("BAD_ARGS", "Invalid argument types");
-      return;
-    }
-
-    // CompareStringEx expects a BCP 47 locale name (hyphens, not underscores).
-    std::wstring locale = Utf8ToWide(*locale_utf8);
-    for (auto& c : locale) {
-      if (c == L'_') c = L'-';
-    }
-
-    std::vector<std::wstring> wide_strings;
-    wide_strings.reserve(input_list->size());
-    for (const auto& item : *input_list) {
-      const auto* s = std::get_if<std::string>(&item);
-      wide_strings.push_back(s ? Utf8ToWide(*s) : std::wstring{});
-    }
-
-    std::vector<size_t> indices(wide_strings.size());
-    std::iota(indices.begin(), indices.end(), 0);
-    std::stable_sort(indices.begin(), indices.end(),
-        [&](size_t a, size_t b) {
-          int cmp = CompareStringEx(
-              locale.c_str(), NORM_LINGUISTIC_CASING,
-              wide_strings[a].c_str(), -1,
-              wide_strings[b].c_str(), -1,
-              nullptr, nullptr, 0);
-          // Fallback to string sort in case of CompareStringEx error.
-          if (cmp == 0) return wide_strings[a] < wide_strings[b];
-          return cmp == CSTR_LESS_THAN;
-        });
-
+    const auto& input_list =
+        std::get<flutter::EncodableList>(
+            args->find(flutter::EncodableValue("input"))->second);
     flutter::EncodableList sorted;
-    sorted.reserve(indices.size());
-    for (size_t i : indices) {
-      const auto* s = std::get_if<std::string>(&(*input_list)[i]);
+    sorted.reserve(indices->size());
+    for (size_t i : *indices) {
+      const auto* s = std::get_if<std::string>(&input_list[i]);
       sorted.push_back(flutter::EncodableValue(s ? *s : std::string{}));
     }
-
     result->Success(flutter::EncodableValue(sorted));
+
+  } else if (method_call.method_name() == "sortIndices") {
+    auto indices = ComputeSortedIndices(args, *result);
+    if (!indices) return;
+
+    flutter::EncodableList result_indices;
+    result_indices.reserve(indices->size());
+    for (size_t i : *indices) {
+      result_indices.push_back(flutter::EncodableValue(static_cast<int>(i)));
+    }
+    result->Success(flutter::EncodableValue(result_indices));
+
   } else {
     result->NotImplemented();
   }
